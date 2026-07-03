@@ -1,0 +1,27 @@
+webcam_probe.py is the live Phase 0 check, and landmark_normalization.py is the math/helper layer it relies on.
+What webcam_probe.py does
+Opens your webcam with OpenCV.
+Loads a MediaPipe Face Landmarker model from --model-path.
+Detects one face per frame.
+Extracts the 478 landmarks into a [[x, y, z], ...] array.
+Passes that array into normalize_landmarks(...).
+Displays the live video with a small overlay showing:scale
+the mean of the normalized landmark array
+
+Lets you quit with q.
+See: [`phase0/webcam_probe.py`](C:/dev/real-time-3D-avatar-s-facial-animation/phase0/webcam_probe.py)
+What landmark_normalization.py does
+Defines the normalization rule for landmarks.
+Centers the face on a stable anchor computed from landmark indices (1, 6, 168).
+Computes scale from the distance between landmarks (33, 263), which acts like an eye-width reference.
+Normalizes all landmarks by subtracting the anchor and dividing by that scale.
+Converts a dataset row with x_0/y_0/z_0 ... columns into a (n, 3) landmark array.
+Provides a small drift summary for sanity checks:scale
+centroid magnitude after normalization
+average spread
+
+See: [`phase0/landmark_normalization.py`](C:/dev/real-time-3D-avatar-s-facial-animation/phase0/landmark_normalization.py)
+In plain English
+webcam_probe.py answers: “Can we see a face from the webcam, run MediaPipe, and produce normalized landmarks live?”
+landmark_normalization.py answers: “How do we make those landmarks position- and scale-invariant so head movement matters less?”
+If you want, I can also explain the exact anchor points and why those landmark indices were chosen.

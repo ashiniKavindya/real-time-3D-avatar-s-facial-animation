@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project data and generated sequence shards
+data/
+models/*.task
+phase2/output*/
+*.npz

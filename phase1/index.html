@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 1 Avatar Mesh Probe</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ccircle cx='24' cy='26' r='5' fill='%236ee7b7'/%3E%3Ccircle cx='40' cy='26' r='5' fill='%236ee7b7'/%3E%3Cpath d='M22 42c5 5 15 5 20 0' fill='none' stroke='%23f8fafc' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Phase 1</p>
+          <h1>Minimal end-to-end mesh setup</h1>
+          <p class="lede">
+            Live webcam landmarks drive a simple Three.js avatar so we can verify mouth and eye channels
+            before wiring a full VRM rig.
+          </p>
+        </div>
+        <div class="actions">
+          <button id="startBtn">Start camera</button>
+          <span id="status">Idle</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <h2>Camera + Landmarks</h2>
+          <div class="stage">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="overlay"></canvas>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Avatar Preview</h2>
+          <div id="avatar"></div>
+          <div class="metrics">
+            <div><span>Mouth open</span><strong id="mouthValue">0.00</strong></div>
+            <div><span>Left eye</span><strong id="leftEyeValue">0.00</strong></div>
+            <div><span>Right eye</span><strong id="rightEyeValue">0.00</strong></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="notes">
+        <h2>How this helps Phase 1</h2>
+        <ul>
+          <li>Proves the live webcam to MediaPipe to avatar pipeline in a browser.</li>
+          <li>Confirms that the raw landmark stream can drive basic facial channels.</li>
+          <li>Provides a clean slot to swap in a real VRM or GLTF rig later.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
