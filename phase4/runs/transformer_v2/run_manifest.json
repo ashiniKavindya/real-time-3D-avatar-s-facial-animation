@@ -1,0 +1,22 @@
+{
+  "run_name": "transformer_v2",
+  "data_dir": "phase2\\output",
+  "output_root": "phase4",
+  "paths": {
+    "run_dir": "phase4\\runs\\transformer_v2",
+    "config_dir": "phase4\\runs\\transformer_v2\\config",
+    "model_dir": "phase4\\runs\\transformer_v2\\model",
+    "checkpoints_dir": "phase4\\runs\\transformer_v2\\model\\checkpoints",
+    "reports_dir": "phase4\\runs\\transformer_v2\\reports",
+    "artifacts_dir": "phase4\\runs\\transformer_v2\\artifacts",
+    "onnx_dir": "phase4\\runs\\transformer_v2\\onnx"
+  },
+  "class_names": [
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Neutral",
+    "Sad"
+  ]
+}

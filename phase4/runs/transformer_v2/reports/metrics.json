@@ -1,0 +1,15 @@
+{
+  "final_train_loss": 1.4654123049515944,
+  "final_train_accuracy": 0.34615384615384615,
+  "final_val_loss": 1.634708285331726,
+  "final_val_accuracy": 0.3333333333333333,
+  "macro_f1": 0.08333333333333333,
+  "auc_by_class": {
+    "Angry": 1.0,
+    "Disgust": NaN,
+    "Fear": NaN,
+    "Happy": 1.0,
+    "Neutral": NaN,
+    "Sad": NaN
+  }
+}

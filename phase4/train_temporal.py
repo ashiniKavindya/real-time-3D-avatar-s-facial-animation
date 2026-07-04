@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,28 @@ from phase4.plots import save_confusion_matrix_heatmap, save_roc_curves, save_tr
 
 DEFAULT_DATA_DIR = Path("phase2/output")
 DEFAULT_OUTPUT_DIR = Path("phase4")
+
+
+def create_run_name(version: str | None) -> str:
+    if version:
+        return version
+    return datetime.now().strftime("run_%Y%m%d_%H%M%S")
+
+
+def prepare_run_directories(output_root: Path, run_name: str) -> dict[str, Path]:
+    run_dir = output_root / "runs" / run_name
+    paths = {
+        "run_dir": run_dir,
+        "config_dir": run_dir / "config",
+        "model_dir": run_dir / "model",
+        "checkpoints_dir": run_dir / "model" / "checkpoints",
+        "reports_dir": run_dir / "reports",
+        "artifacts_dir": run_dir / "artifacts",
+        "onnx_dir": run_dir / "onnx",
+    }
+    for path in paths.values():
+        path.mkdir(parents=True, exist_ok=True)
+    return paths
 
 
 def require_torch():
@@ -161,7 +184,9 @@ def evaluate(torch, model, criterion, shards, args, device):
 
 def write_reports(output_dir, class_names, history, y_true, y_pred, probabilities):
     reports_dir = output_dir / "reports"
+    artifacts_dir = output_dir / "artifacts"
     reports_dir.mkdir(parents=True, exist_ok=True)
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     report = classification_report_frame(y_true, y_pred, class_names)
     report.to_csv(reports_dir / "classification_report.csv", index=False)
@@ -176,6 +201,16 @@ def write_reports(output_dir, class_names, history, y_true, y_pred, probabilitie
 
     roc_curves = one_vs_rest_roc_auc(y_true, probabilities, class_names)
     save_roc_curves(roc_curves, reports_dir / "roc_curves.png")
+
+    validation_predictions = pd.DataFrame(
+        {
+            "y_true": y_true,
+            "y_pred": y_pred,
+            "confidence": probabilities.max(axis=1) if len(probabilities) else np.array([], dtype=np.float32),
+            "correct": (y_true == y_pred).astype(np.int64),
+        }
+    )
+    validation_predictions.to_csv(artifacts_dir / "validation_predictions.csv", index=False)
 
     auc_by_class = {class_name: float(curve["auc"]) for class_name, curve in roc_curves.items()}
     final_metrics = {
@@ -215,6 +250,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Phase 4 transformer trainer")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="Phase 2 output directory")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Phase 4 output directory")
+    parser.add_argument("--version", type=str, default=None, help="Optional run name; defaults to a timestamp")
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
@@ -238,6 +274,8 @@ def main() -> int:
     from phase4.model import EmotionTransformer
 
     validate_args(args)
+    run_name = create_run_name(args.version)
+    run_paths = prepare_run_directories(args.output_dir, run_name)
 
     manifest = load_manifest(args.data_dir)
     class_names = class_names_from_manifest(manifest)
@@ -272,6 +310,7 @@ def main() -> int:
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     config = {
         "architecture": "Temporal transformer",
+        "run_name": run_name,
         "sequence_length": sequence_length,
         "input_features": input_features,
         "optimizer": "AdamW",
@@ -288,17 +327,26 @@ def main() -> int:
         "class_weights": class_weights.tolist(),
         "data_dir": str(args.data_dir),
     }
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    (args.output_dir / "training_config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    (run_paths["config_dir"] / "training_config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    run_manifest = {
+        "run_name": run_name,
+        "data_dir": str(args.data_dir),
+        "output_root": str(args.output_dir),
+        "paths": {name: str(path) for name, path in run_paths.items()},
+        "class_names": class_names,
+    }
+    (run_paths["run_dir"] / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2), encoding="utf-8")
 
     print(f"Training Phase 4 transformer on {len(shards)} shard(s)")
+    print(f"Run name: {run_name}")
+    print(f"Run dir: {run_paths['run_dir']}")
     print(f"Device: {device}")
     print(f"Input shape: ({sequence_length}, {input_features})")
     print(f"Class weights: {class_weights.tolist()}")
 
     history: list[dict[str, float]] = []
     best_val_accuracy = -1.0
-    best_checkpoint = checkpoints_dir / "best_model.pt"
+    best_checkpoint = run_paths["checkpoints_dir"] / "best_model.pt"
 
     for epoch in range(1, args.epochs + 1):
         train_loss, train_accuracy = train_epoch(torch, model, criterion, optimizer, shards, args, device, epoch)
@@ -336,9 +384,9 @@ def main() -> int:
     history[-1]["val_loss"] = val_loss
     history[-1]["val_accuracy"] = val_accuracy
 
-    metrics = write_reports(args.output_dir, class_names, history, y_true, y_pred, probabilities)
+    metrics = write_reports(run_paths["run_dir"], class_names, history, y_true, y_pred, probabilities)
     print(f"Saved best checkpoint: {best_checkpoint}")
-    print(f"Saved reports: {args.output_dir / 'reports'}")
+    print(f"Saved reports: {run_paths['reports_dir']}")
     print(json.dumps(metrics, indent=2))
     return 0
 

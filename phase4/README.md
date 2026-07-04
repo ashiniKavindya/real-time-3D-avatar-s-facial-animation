@@ -63,9 +63,12 @@ python -m phase4.export_onnx --verify
 
 ## Output Artifacts
 
-Phase 4 writes these folders and files under `phase4/`:
-- `training_config.json`
-- `checkpoints/best_model.pt`
+Phase 4 now writes each run into its own folder under `phase4/runs/<run_name>/`.
+
+Suggested layout:
+
+- `config/training_config.json` for the full hyperparameter and dataset configuration
+- `model/checkpoints/best_model.pt` for the best saved weights
 - `reports/classification_report.csv`
 - `reports/classification_report.txt`
 - `reports/confusion_matrix.csv`
@@ -74,4 +77,14 @@ Phase 4 writes these folders and files under `phase4/`:
 - `reports/training_curves.png`
 - `reports/roc_curves.png`
 - `reports/metrics.json`
-- `onnx/emotion_transformer.onnx`
+- `artifacts/validation_predictions.csv` for per-window validation predictions and confidence scores
+- `onnx/emotion_transformer.onnx` for the exported model when you run export
+- `run_manifest.json` for a compact map of the run and its folders
+
+Each run can be created with an explicit name:
+
+```powershell
+python -m phase4.train_temporal --version transformer_v1
+```
+
+If `--version` is omitted, the script creates a timestamped run folder automatically.

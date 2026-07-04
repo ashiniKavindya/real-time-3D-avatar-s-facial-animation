@@ -4,6 +4,5 @@ pyarrow>=16.0
 opencv-python>=4.10
 mediapipe>=0.10.14
 matplotlib>=3.8
-torch>=2.3
 onnx>=1.16
 onnxruntime>=1.18

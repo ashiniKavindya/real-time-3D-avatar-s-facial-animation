@@ -1,0 +1,33 @@
+{
+  "architecture": "Temporal transformer",
+  "run_name": "transformer_v2",
+  "sequence_length": 30,
+  "input_features": 1434,
+  "optimizer": "AdamW",
+  "learning_rate": 0.001,
+  "loss_function": "CrossEntropyLoss(weighted)",
+  "batch_size": 8,
+  "epochs": 1,
+  "model_dim": 256,
+  "num_heads": 8,
+  "num_layers": 2,
+  "feedforward_dim": 512,
+  "dropout": 0.1,
+  "class_names": [
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Neutral",
+    "Sad"
+  ],
+  "class_weights": [
+    0.1360030174255371,
+    1.768039345741272,
+    0.442009836435318,
+    0.1178692877292633,
+    1.768039345741272,
+    1.768039345741272
+  ],
+  "data_dir": "phase2\\output"
+}
