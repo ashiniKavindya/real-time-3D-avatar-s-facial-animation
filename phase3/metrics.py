@@ -4,22 +4,46 @@ import numpy as np
 import pandas as pd
 
 
+def _as_1d_int_array(name: str, values: np.ndarray) -> np.ndarray:
+    array = np.asarray(values)
+    if array.ndim != 1:
+        raise ValueError(f"{name} must be a 1D array, got shape {array.shape}")
+    return array.astype(np.int64, copy=False)
+
+
 def confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, num_classes: int) -> np.ndarray:
+    if num_classes <= 0:
+        raise ValueError(f"num_classes must be positive, got {num_classes}")
+    true = _as_1d_int_array("y_true", y_true)
+    pred = _as_1d_int_array("y_pred", y_pred)
+    if len(true) != len(pred):
+        raise ValueError(f"y_true and y_pred must have the same length, got {len(true)} and {len(pred)}")
+
     matrix = np.zeros((num_classes, num_classes), dtype=np.int64)
-    for true_label, pred_label in zip(y_true, y_pred):
-        matrix[int(true_label), int(pred_label)] += 1
+    if len(true) == 0:
+        return matrix
+
+    valid = (true >= 0) & (true < num_classes) & (pred >= 0) & (pred < num_classes)
+    np.add.at(matrix, (true[valid], pred[valid]), 1)
     return matrix
 
 
 def classification_report_frame(y_true: np.ndarray, y_pred: np.ndarray, class_names: list[str]) -> pd.DataFrame:
+    true = _as_1d_int_array("y_true", y_true)
+    pred = _as_1d_int_array("y_pred", y_pred)
+    if len(true) != len(pred):
+        raise ValueError(f"y_true and y_pred must have the same length, got {len(true)} and {len(pred)}")
+
     rows: list[dict[str, float | int | str]] = []
     num_classes = len(class_names)
+    if num_classes == 0:
+        raise ValueError("class_names must not be empty")
 
     for class_id, class_name in enumerate(class_names):
-        true_positive = int(np.sum((y_true == class_id) & (y_pred == class_id)))
-        false_positive = int(np.sum((y_true != class_id) & (y_pred == class_id)))
-        false_negative = int(np.sum((y_true == class_id) & (y_pred != class_id)))
-        support = int(np.sum(y_true == class_id))
+        true_positive = int(np.sum((true == class_id) & (pred == class_id)))
+        false_positive = int(np.sum((true != class_id) & (pred == class_id)))
+        false_negative = int(np.sum((true == class_id) & (pred != class_id)))
+        support = int(np.sum(true == class_id))
         precision = true_positive / (true_positive + false_positive) if true_positive + false_positive else 0.0
         recall = true_positive / (true_positive + false_negative) if true_positive + false_negative else 0.0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
@@ -35,7 +59,7 @@ def classification_report_frame(y_true: np.ndarray, y_pred: np.ndarray, class_na
 
     report = pd.DataFrame(rows)
     total_support = int(report["Support"].sum())
-    accuracy = float(np.mean(y_true == y_pred)) if len(y_true) else 0.0
+    accuracy = float(np.mean(true == pred)) if len(true) else 0.0
     macro = report[["Precision", "Recall", "F1-Score"]].mean(numeric_only=True)
     weighted = (
         report[["Precision", "Recall", "F1-Score"]].multiply(report["Support"], axis=0).sum() / total_support
@@ -64,10 +88,24 @@ def one_vs_rest_roc_auc(
     probabilities: np.ndarray,
     class_names: list[str],
 ) -> dict[str, dict[str, np.ndarray | float]]:
+    true = _as_1d_int_array("y_true", y_true)
+    probs = np.asarray(probabilities)
+    if probs.ndim != 2:
+        raise ValueError(f"probabilities must be a 2D array, got shape {probs.shape}")
+    if len(true) != probs.shape[0]:
+        raise ValueError(
+            f"y_true and probabilities must align on sample axis, got {len(true)} and {probs.shape[0]}"
+        )
+    if probs.shape[1] != len(class_names):
+        raise ValueError(
+            "Number of probability columns must match class_names length, "
+            f"got {probs.shape[1]} and {len(class_names)}"
+        )
+
     curves: dict[str, dict[str, np.ndarray | float]] = {}
     for class_id, class_name in enumerate(class_names):
-        binary_true = (y_true == class_id).astype(np.int32)
-        scores = probabilities[:, class_id]
+        binary_true = (true == class_id).astype(np.int32)
+        scores = probs[:, class_id]
         positives = int(binary_true.sum())
         negatives = int(len(binary_true) - positives)
         if positives == 0 or negatives == 0:
@@ -80,6 +118,6 @@ def one_vs_rest_roc_auc(
         false_positive = np.cumsum(1 - sorted_true)
         tpr = np.concatenate([[0.0], true_positive / positives, [1.0]])
         fpr = np.concatenate([[0.0], false_positive / negatives, [1.0]])
-        auc = float(np.trapz(tpr, fpr))
+        auc = float(np.trapezoid(tpr, fpr))
         curves[class_name] = {"fpr": fpr, "tpr": tpr, "auc": auc}
     return curves

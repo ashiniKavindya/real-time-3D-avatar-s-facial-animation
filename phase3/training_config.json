@@ -1,0 +1,23 @@
+{
+  "architecture": "MLP baseline",
+  "sequence_length": 30,
+  "input_features": 1434,
+  "optimizer": "Adam",
+  "learning_rate": 0.001,
+  "loss_function": "CrossEntropyLoss",
+  "batch_size": 64,
+  "epochs": 10,
+  "hidden_1": 512,
+  "hidden_2": 128,
+  "dropout_1": 0.3,
+  "dropout_2": 0.2,
+  "class_names": [
+    "Angry",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Neutral",
+    "Sad"
+  ],
+  "data_dir": "phase2\\output"
+}

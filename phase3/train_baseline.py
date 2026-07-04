@@ -198,6 +198,23 @@ def write_reports(
     return final_metrics
 
 
+def validate_args(args: argparse.Namespace) -> None:
+    if args.epochs < 1:
+        raise SystemExit("--epochs must be >= 1")
+    if args.batch_size < 1:
+        raise SystemExit("--batch-size must be >= 1")
+    if args.learning_rate <= 0:
+        raise SystemExit("--learning-rate must be > 0")
+    if args.hidden_1 < 1 or args.hidden_2 < 1:
+        raise SystemExit("--hidden-1 and --hidden-2 must be >= 1")
+    if not 0 <= args.dropout_1 < 1 or not 0 <= args.dropout_2 < 1:
+        raise SystemExit("--dropout-1 and --dropout-2 must be in [0, 1)")
+    if args.max_shards is not None and args.max_shards < 1:
+        raise SystemExit("--max-shards must be >= 1 when provided")
+    if args.max_windows_per_shard is not None and args.max_windows_per_shard < 1:
+        raise SystemExit("--max-windows-per-shard must be >= 1 when provided")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Phase 3 MLP baseline trainer")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="Phase 2 output directory")
@@ -223,6 +240,7 @@ def main() -> int:
     torch = require_torch()
     from phase3.model import EmotionMLP
 
+    validate_args(args)
     if not 0 < args.val_split < 1:
         raise SystemExit("--val-split must be between 0 and 1")
 
@@ -307,6 +325,12 @@ def main() -> int:
                 },
                 best_checkpoint,
             )
+
+    best_state = torch.load(best_checkpoint, map_location=device)
+    model.load_state_dict(best_state["model_state_dict"])
+    val_loss, val_accuracy, y_true, y_pred, probabilities = evaluate(torch, model, criterion, shards, args, device)
+    history[-1]["val_loss"] = val_loss
+    history[-1]["val_accuracy"] = val_accuracy
 
     metrics = write_reports(args.output_dir, class_names, history, y_true, y_pred, probabilities)
     print(f"Saved best checkpoint: {best_checkpoint}")
