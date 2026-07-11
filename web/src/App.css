@@ -1,0 +1,157 @@
+.app {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+.camera-off-notice {
+  color: var(--text);
+}
+
+.debug-toggle-button {
+  align-self: flex-end;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+/* Consent modal */
+.consent-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.consent-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 420px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.consent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.consent-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.consent-actions button.primary {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+
+/* Webcam */
+.webcam-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.webcam-video {
+  width: 320px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  transform: scaleX(-1); /* mirror, feels natural for a self-facing camera */
+}
+
+.webcam-error {
+  color: #c0392b;
+}
+
+.disable-camera-toggle {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+/* Debug panel */
+.debug-panel {
+  width: 100%;
+  max-width: 480px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: left;
+}
+
+.debug-empty {
+  color: var(--text);
+}
+
+.debug-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.debug-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.debug-bar-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.debug-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-bar-track {
+  background: var(--code-bg);
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.debug-bar-fill {
+  background: var(--accent);
+  height: 100%;
+}
+
+.debug-bar-value {
+  text-align: right;
+}
