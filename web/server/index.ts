@@ -6,8 +6,10 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import cookieSession from 'cookie-session';
 import { OAuth2Client } from 'google-auth-library';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import { appendMemory, formatMemoriesForPrompt, readMemories } from './memoryStore.js';
+import { chatTools } from './tools.js';
+import { retrieveRelevantNotes } from './rag.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SYSTEM_PROMPT_PATH = path.resolve(__dirname, '../prompts/system.md');
@@ -28,6 +30,7 @@ interface ChatMessage {
 
 const apiKey = process.env.GEMINI_API_KEY;
 const model = apiKey ? new ChatGoogleGenerativeAI({ model: MODEL, apiKey }) : null;
+const modelWithTools = model ? model.bindTools(chatTools) : null;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const app = express();
@@ -86,7 +89,7 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.post('/api/chat', requireAuth, async (req, res) => {
-  if (!model) {
+  if (!modelWithTools) {
     res.status(500).json({ error: 'GEMINI_API_KEY is not set in web/.env' });
     return;
   }
@@ -94,15 +97,32 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   try {
     const userId = req.session!.userId as string;
     const { messages } = req.body as { messages: ChatMessage[] };
+    const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
 
+    const relevantNotes = apiKey ? await retrieveRelevantNotes(apiKey, latestUserMessage) : '';
     const systemPrompt =
-      fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8') + formatMemoriesForPrompt(readMemories(userId));
+      fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8') + formatMemoriesForPrompt(readMemories(userId)) + relevantNotes;
     const chatMessages: BaseMessage[] = [
       new SystemMessage(systemPrompt),
       ...messages.map((m) => (m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content))),
     ];
 
-    const response = await model.invoke(chatMessages);
+    let response = await modelWithTools.invoke(chatMessages);
+
+    // If the model asked to call a tool, run it and feed the result back in,
+    // repeating until it's satisfied and produces a final natural-language reply.
+    while (response.tool_calls && response.tool_calls.length > 0) {
+      chatMessages.push(response);
+      for (const call of response.tool_calls) {
+        const matchedTool = chatTools.find((t) => t.name === call.name);
+        const result = matchedTool
+          ? await matchedTool.invoke(call.args as Record<string, never>)
+          : `Unknown tool: ${call.name}`;
+        chatMessages.push(new ToolMessage(String(result), call.id ?? ''));
+      }
+      response = await modelWithTools.invoke(chatMessages);
+    }
+
     res.json({ reply: response.content });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
