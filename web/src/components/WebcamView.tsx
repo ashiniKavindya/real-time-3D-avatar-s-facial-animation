@@ -1,21 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { detectFrame } from '../lib/faceLandmarker';
-import { EmotionPipeline, type EmotionDebugInfo } from '../lib/emotionPipeline';
+import type { EmotionPipeline, EmotionDebugInfo } from '../lib/emotionPipeline';
 
 const TARGET_FPS = 8;
 const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
 
 interface WebcamViewProps {
+  pipeline: EmotionPipeline;
   onEmotionUpdate: (info: EmotionDebugInfo) => void;
   onDisable: () => void;
 }
 
-export function WebcamView({ onEmotionUpdate, onDisable }: WebcamViewProps) {
+export function WebcamView({ pipeline, onEmotionUpdate, onDisable }: WebcamViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
-  // One pipeline instance per mounted webcam session, so its EmotionStateMachine
-  // buffer and warm-up timer persist across frames instead of resetting every render.
-  const pipelineRef = useRef<EmotionPipeline>(new EmotionPipeline());
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -42,7 +40,7 @@ export function WebcamView({ onEmotionUpdate, onDisable }: WebcamViewProps) {
           lastFrameTime = now;
           const result = await detectFrame(video, performance.now());
           if (!cancelled) {
-            const info = pipelineRef.current.processFrame(result);
+            const info = pipeline.processFrame(result);
             onEmotionUpdate(info);
           }
         }
@@ -58,7 +56,7 @@ export function WebcamView({ onEmotionUpdate, onDisable }: WebcamViewProps) {
       cancelAnimationFrame(rafId);
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, [onEmotionUpdate]);
+  }, [pipeline, onEmotionUpdate]);
 
   return (
     <div className="webcam-view">

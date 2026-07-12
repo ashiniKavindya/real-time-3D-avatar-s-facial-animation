@@ -1,14 +1,30 @@
-import { useCallback, useRef, useState } from 'react';
-import { endChatSession, sendChatMessage } from '../lib/chatClient';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { endChatSession, fetchGreeting, sendChatMessage } from '../lib/chatClient';
 import type { ChatMessage } from '../types/chat';
 
-export function ChatUI() {
+interface ChatUIProps {
+  // undefined = still waiting to know the mood (don't greet yet); null = known, no mood/camera off.
+  moodHint?: 'happy' | 'sad' | 'angry' | 'neutral' | null;
+}
+
+export function ChatUI({ moodHint }: ChatUIProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
+  const hasGreetedRef = useRef(false);
+
+  useEffect(() => {
+    if (moodHint === undefined || hasGreetedRef.current) return;
+    hasGreetedRef.current = true;
+    fetchGreeting(moodHint)
+      .then((greeting) => {
+        if (greeting) setMessages((prev) => (prev.length === 0 ? [{ role: 'model', content: greeting }] : prev));
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load greeting.'));
+  }, [moodHint]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();

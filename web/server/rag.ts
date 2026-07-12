@@ -5,7 +5,7 @@ import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NOTES_DIR = path.resolve(__dirname, '../notes');
-const EMBEDDING_MODEL = 'text-embedding-004';
+const EMBEDDING_MODEL = 'gemini-embedding-001';
 const TOP_K = 3;
 // Below this similarity, a note is treated as irrelevant rather than force-fit into the prompt.
 const MIN_SIMILARITY = 0.7;

@@ -23,6 +23,30 @@ const SUMMARY_INSTRUCTION =
   'about the user that would help a friend remember them next time. Skip small talk and filler. ' +
   'Write only the summary, no preamble.';
 
+const MOOD_LABELS = ['happy', 'sad', 'angry', 'neutral'] as const;
+type MoodLabel = (typeof MOOD_LABELS)[number];
+
+function isMoodLabel(value: unknown): value is MoodLabel {
+  return typeof value === 'string' && (MOOD_LABELS as readonly string[]).includes(value);
+}
+
+const MOOD_PROMPTS: Record<Exclude<MoodLabel, 'neutral'>, string> = {
+  sad: "They seem a little down. Gently ask what's going on or why they seem sad, the way a close friend would - caring and direct, not clinical.",
+  angry: "They seem frustrated or upset. Gently ask what's bothering them or what happened, the way a close friend would - caring and direct, not clinical.",
+  happy: "They seem in a good mood. Warmly ask what's making them happy or what's got them smiling, the way a close friend would.",
+};
+
+function greetingInstruction(mood: MoodLabel | null): string {
+  if (mood === null || mood === 'neutral') {
+    return 'Write a short (1-2 sentence), warm opening greeting to start a new conversation. Do not mention mood or emotion detection at all.';
+  }
+  return (
+    `Write a short (1-2 sentence) opening greeting to start a new conversation. ${MOOD_PROMPTS[mood]} ` +
+    `Never say things like "I detected" or "my analysis shows" or name it as data from a system - just notice ` +
+    `it the way an attentive friend naturally would.`
+  );
+}
+
 interface ChatMessage {
   role: 'user' | 'model';
   content: string;
@@ -124,6 +148,30 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     }
 
     res.json({ reply: response.content });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
+
+app.post('/api/greeting', requireAuth, async (req, res) => {
+  if (!model) {
+    res.status(500).json({ error: 'GEMINI_API_KEY is not set in web/.env' });
+    return;
+  }
+
+  try {
+    const userId = req.session!.userId as string;
+    const { mood } = req.body as { mood?: unknown };
+    const moodLabel = isMoodLabel(mood) ? mood : null;
+
+    const systemPrompt =
+      fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8') + formatMemoriesForPrompt(readMemories(userId));
+    const response = await model.invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(greetingInstruction(moodLabel)),
+    ]);
+
+    res.json({ greeting: String(response.content) });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
