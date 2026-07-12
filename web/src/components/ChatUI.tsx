@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { sendChatMessage } from '../lib/chatClient';
+import { endChatSession, sendChatMessage } from '../lib/chatClient';
 import type { ChatMessage } from '../types/chat';
 
 export function ChatUI() {
@@ -7,6 +7,7 @@ export function ChatUI() {
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
 
   const handleSend = useCallback(async () => {
@@ -17,6 +18,7 @@ export function ChatUI() {
     setMessages(nextMessages);
     setInput('');
     setError(null);
+    setSavedNotice(null);
     setIsSending(true);
 
     try {
@@ -40,6 +42,21 @@ export function ChatUI() {
     [handleSend],
   );
 
+  const handleEndSession = useCallback(async () => {
+    if (messages.length === 0 || isSending) return;
+    setIsSending(true);
+    setError(null);
+    try {
+      await endChatSession(messages);
+      setMessages([]);
+      setSavedNotice('Saved to memory. Starting a fresh conversation.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save session.');
+    } finally {
+      setIsSending(false);
+    }
+  }, [messages, isSending]);
+
   return (
     <div className="chat-ui">
       <div className="chat-messages">
@@ -54,6 +71,7 @@ export function ChatUI() {
       </div>
 
       {error && <p className="chat-error">{error}</p>}
+      {savedNotice && <p className="chat-saved-notice">{savedNotice}</p>}
 
       <div className="chat-input-row">
         <input
@@ -69,6 +87,14 @@ export function ChatUI() {
           Send
         </button>
       </div>
+
+      <button
+        onClick={() => void handleEndSession()}
+        disabled={isSending || messages.length === 0}
+        className="chat-end-session-button"
+      >
+        End & remember this conversation
+      </button>
     </div>
   );
 }

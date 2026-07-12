@@ -15,6 +15,9 @@ dist-ssr
 # Secrets
 .env
 
+# Personal chat memory (private data, not source code)
+data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
