@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { ConsentModal } from './components/ConsentModal';
 import { WebcamView } from './components/WebcamView';
 import { DebugPanel, isDebugEnabled } from './components/DebugPanel';
+import { ChatUI } from './components/ChatUI';
 import type { EmotionDebugInfo } from './lib/emotionPipeline';
 import './App.css';
 
@@ -42,6 +43,8 @@ function App() {
       )}
 
       {(isDebugEnabled() || debugToggle) && <DebugPanel info={emotionInfo} />}
+
+      <ChatUI />
     </div>
   );
 }

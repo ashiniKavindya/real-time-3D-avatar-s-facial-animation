@@ -8,7 +8,7 @@ import { AIMessage, HumanMessage, SystemMessage, type BaseMessage } from '@langc
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SYSTEM_PROMPT_PATH = path.resolve(__dirname, '../prompts/system.md');
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-flash-latest';
 
 interface ChatMessage {
   role: 'user' | 'model';
