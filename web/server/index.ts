@@ -5,15 +5,15 @@ import { fileURLToPath } from 'node:url';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieSession from 'cookie-session';
 import { OAuth2Client } from 'google-auth-library';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import { appendMemory, formatMemoriesForPrompt, readMemories } from './memoryStore.js';
 import { chatTools } from './tools.js';
-import { retrieveRelevantNotes } from './rag.js';
+import { addNote, deleteNote, listNotes, retrieveRelevantNotes } from './rag.js';
+import { createChatModel } from './chatModel.js';
+import { getBotName, setBotName } from './settingsStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SYSTEM_PROMPT_PATH = path.resolve(__dirname, '../prompts/system.md');
-const MODEL = 'gemini-flash-latest';
 const PORT = Number(process.env.PORT ?? 3001);
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? '';
 const COOKIE_SECRET = process.env.COOKIE_SECRET ?? 'dev-only-insecure-secret-change-me';
@@ -36,6 +36,19 @@ const MOOD_PROMPTS: Record<Exclude<MoodLabel, 'neutral'>, string> = {
   happy: "They seem in a good mood. Warmly ask what's making them happy or what's got them smiling, the way a close friend would.",
 };
 
+function moodContext(mood: MoodLabel | null): string {
+  if (mood === null) {
+    return "\n\nNo webcam mood reading is currently available. If asked what mood you're picking up on, say you can't tell right now.";
+  }
+  return (
+    `\n\nThe user's current webcam-based mood reads "${mood}". Let this inform your empathy and tone where ` +
+    `relevant - e.g. gently check in if they seem sad or frustrated, share in it if they seem happy - the way ` +
+    `an attentive friend would, without unprompted clinical statements like "I detected...". However, if they ` +
+    `directly ask what mood you're picking up on / what they look like / to guess their mood, answer honestly ` +
+    `and naturally using this reading (e.g. "You seem a little ${mood} to me right now").`
+  );
+}
+
 function greetingInstruction(mood: MoodLabel | null): string {
   if (mood === null || mood === 'neutral') {
     return 'Write a short (1-2 sentence), warm opening greeting to start a new conversation. Do not mention mood or emotion detection at all.';
@@ -52,9 +65,30 @@ interface ChatMessage {
   content: string;
 }
 
+// Provider errors (rate limits, outages) come through as long raw JSON blobs -
+// not something to show a user. Log the real error for debugging, but respond
+// with a short, human message tailored to what actually went wrong.
+function friendlyErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  console.error(err);
+
+  if (/429|quota|rate.?limit/i.test(raw)) {
+    return "I've hit my usage limit with the AI provider for now. Please wait a bit and try again.";
+  }
+  if (/ECONNREFUSED|ENOTFOUND|network|fetch failed/i.test(raw)) {
+    return "I couldn't reach the AI provider - please check your connection and try again.";
+  }
+  if (/401|403|API key/i.test(raw)) {
+    return 'There’s an issue with the AI provider configuration. Please let the site owner know.';
+  }
+  return 'Something went wrong on my end. Please try again in a moment.';
+}
+
+// Embeddings for RAG stay tied to Gemini directly regardless of CHAT_PROVIDER -
+// swapping the chat model doesn't require swapping the embedding model too.
 const apiKey = process.env.GEMINI_API_KEY;
-const model = apiKey ? new ChatGoogleGenerativeAI({ model: MODEL, apiKey }) : null;
-const modelWithTools = model ? model.bindTools(chatTools) : null;
+const model = createChatModel();
+const modelWithTools = model?.bindTools ? model.bindTools(chatTools) : null;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 const app = express();
@@ -112,6 +146,22 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ email: req.session.email, name: req.session.name });
 });
 
+app.get('/api/settings', requireAuth, (req, res) => {
+  const userId = req.session!.userId as string;
+  res.json({ botName: getBotName(userId) });
+});
+
+app.post('/api/settings', requireAuth, (req, res) => {
+  const userId = req.session!.userId as string;
+  const { botName } = req.body as { botName?: string };
+  if (!botName || !botName.trim()) {
+    res.status(400).json({ error: 'Bot name is required' });
+    return;
+  }
+  setBotName(userId, botName.trim().slice(0, 40));
+  res.json({ botName: getBotName(userId) });
+});
+
 app.post('/api/chat', requireAuth, async (req, res) => {
   if (!modelWithTools) {
     res.status(500).json({ error: 'GEMINI_API_KEY is not set in web/.env' });
@@ -120,12 +170,18 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
   try {
     const userId = req.session!.userId as string;
-    const { messages } = req.body as { messages: ChatMessage[] };
+    const userName = req.session!.name as string | undefined;
+    const { messages, mood } = req.body as { messages: ChatMessage[]; mood?: unknown };
     const latestUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
 
-    const relevantNotes = apiKey ? await retrieveRelevantNotes(apiKey, latestUserMessage) : '';
+    const relevantNotes = apiKey ? await retrieveRelevantNotes(apiKey, userId, latestUserMessage) : '';
+    const nameContext = userName ? `\n\nThe user's name is ${userName}. Use it naturally where it feels warm, not every message.` : '';
     const systemPrompt =
-      fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8') + formatMemoriesForPrompt(readMemories(userId)) + relevantNotes;
+      fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8') +
+      nameContext +
+      formatMemoriesForPrompt(readMemories(userId)) +
+      relevantNotes +
+      moodContext(isMoodLabel(mood) ? mood : null);
     const chatMessages: BaseMessage[] = [
       new SystemMessage(systemPrompt),
       ...messages.map((m) => (m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content))),
@@ -149,8 +205,41 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
     res.json({ reply: response.content });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(500).json({ error: friendlyErrorMessage(err) });
   }
+});
+
+app.get('/api/notes', requireAuth, (req, res) => {
+  const userId = req.session!.userId as string;
+  res.json({ notes: listNotes(userId) });
+});
+
+app.post('/api/notes', requireAuth, async (req, res) => {
+  if (!apiKey) {
+    res.status(500).json({ error: 'GEMINI_API_KEY is not set in web/.env' });
+    return;
+  }
+
+  try {
+    const userId = req.session!.userId as string;
+    const { content } = req.body as { content?: string };
+    if (!content || !content.trim()) {
+      res.status(400).json({ error: 'Note content is required' });
+      return;
+    }
+
+    await addNote(apiKey, userId, content.trim());
+    res.json({ notes: listNotes(userId) });
+  } catch (err) {
+    res.status(500).json({ error: friendlyErrorMessage(err) });
+  }
+});
+
+app.delete('/api/notes/:id', requireAuth, (req, res) => {
+  const userId = req.session!.userId as string;
+  const noteId = Number(req.params.id);
+  deleteNote(userId, noteId);
+  res.json({ notes: listNotes(userId) });
 });
 
 app.post('/api/greeting', requireAuth, async (req, res) => {
@@ -173,7 +262,7 @@ app.post('/api/greeting', requireAuth, async (req, res) => {
 
     res.json({ greeting: String(response.content) });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(500).json({ error: friendlyErrorMessage(err) });
   }
 });
 
@@ -199,7 +288,7 @@ app.post('/api/end-session', requireAuth, async (req, res) => {
 
     res.json({ summary });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(500).json({ error: friendlyErrorMessage(err) });
   }
 });
 

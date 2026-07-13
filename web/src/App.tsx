@@ -3,6 +3,7 @@ import { ConsentModal } from './components/ConsentModal';
 import { WebcamView } from './components/WebcamView';
 import { DebugPanel, isDebugEnabled } from './components/DebugPanel';
 import { ChatUI } from './components/ChatUI';
+import { NotesPanel } from './components/NotesPanel';
 import { SignIn } from './components/SignIn';
 import { fetchCurrentUser, logout, type AuthUser } from './lib/authClient';
 import { EmotionPipeline, type EmotionDebugInfo } from './lib/emotionPipeline';
@@ -65,7 +66,30 @@ function App() {
 
   return (
     <div className="app">
-      <h1>Emotion-Aware Chatbot</h1>
+      <div className="app-layout">
+        <div className="chat-column">
+          <ChatUI moodHint={moodHint} liveMood={consent === 'granted' ? (emotionInfo?.stableState ?? null) : null} />
+        </div>
+
+        <div className="side-column">
+          {consent === 'pending' && (
+            <ConsentModal onAccept={handleAccept} onDecline={handleDecline} />
+          )}
+          {consent === 'granted' && (
+            <WebcamView pipeline={pipelineRef.current} onEmotionUpdate={handleEmotionUpdate} onDisable={handleDisable} />
+          )}
+          {consent === 'declined' && (
+            <p className="camera-off-notice">Camera is off. Chat works normally without it.</p>
+          )}
+
+          <button onClick={() => setDebugToggle((v) => !v)} className="debug-toggle-button">
+            {debugToggle ? 'Hide debug panel' : 'Show debug panel'}
+          </button>
+          {(isDebugEnabled() || debugToggle) && <DebugPanel info={emotionInfo} />}
+        </div>
+      </div>
+
+      <NotesPanel />
 
       <div className="account-bar">
         <span>Signed in as {user.name ?? user.email}</span>
@@ -73,27 +97,6 @@ function App() {
           Sign out
         </button>
       </div>
-
-      <button
-        onClick={() => setDebugToggle((v) => !v)}
-        className="debug-toggle-button"
-      >
-        {debugToggle ? 'Hide debug panel' : 'Show debug panel'}
-      </button>
-
-      {consent === 'pending' && (
-        <ConsentModal onAccept={handleAccept} onDecline={handleDecline} />
-      )}
-      {consent === 'granted' && (
-        <WebcamView pipeline={pipelineRef.current} onEmotionUpdate={handleEmotionUpdate} onDisable={handleDisable} />
-      )}
-      {consent === 'declined' && (
-        <p className="camera-off-notice">Camera is off. Chat works normally without it.</p>
-      )}
-
-      {(isDebugEnabled() || debugToggle) && <DebugPanel info={emotionInfo} />}
-
-      <ChatUI moodHint={moodHint} />
     </div>
   );
 }

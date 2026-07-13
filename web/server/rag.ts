@@ -1,34 +1,18 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
+import { db } from './db.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const NOTES_DIR = path.resolve(__dirname, '../notes');
 const EMBEDDING_MODEL = 'gemini-embedding-001';
 const TOP_K = 3;
 // Below this similarity, a note is treated as irrelevant rather than force-fit into the prompt.
 const MIN_SIMILARITY = 0.7;
 
-interface NoteChunk {
-  text: string;
-  embedding: number[];
-}
-
 let embeddings: GoogleGenerativeAIEmbeddings | null = null;
-let chunksPromise: Promise<NoteChunk[]> | null = null;
 
-function splitIntoChunks(text: string): string[] {
-  return text
-    .split(/\n\s*\n/)
-    .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 0);
-}
-
-function loadRawChunks(): string[] {
-  if (!fs.existsSync(NOTES_DIR)) return [];
-  const files = fs.readdirSync(NOTES_DIR).filter((f) => f.endsWith('.md') || f.endsWith('.txt'));
-  return files.flatMap((file) => splitIntoChunks(fs.readFileSync(path.join(NOTES_DIR, file), 'utf-8')));
+function getEmbeddings(apiKey: string): GoogleGenerativeAIEmbeddings {
+  if (!embeddings) {
+    embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, model: EMBEDDING_MODEL });
+  }
+  return embeddings;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -43,28 +27,43 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// Chunks are embedded once and cached in memory for the life of the process -
-// re-embedding on every chat message would be slow and unnecessary since the
-// notes on disk don't change while the server is running.
-async function getChunks(apiKey: string): Promise<NoteChunk[]> {
-  if (!chunksPromise) {
-    embeddings = new GoogleGenerativeAIEmbeddings({ apiKey, model: EMBEDDING_MODEL });
-    const rawChunks = loadRawChunks();
-    chunksPromise =
-      rawChunks.length === 0
-        ? Promise.resolve([])
-        : embeddings
-            .embedDocuments(rawChunks)
-            .then((vectors) => rawChunks.map((text, i) => ({ text, embedding: vectors[i] })));
-  }
-  return chunksPromise;
+export interface NoteRecord {
+  id: number;
+  content: string;
+  createdAt: string;
 }
 
-export async function retrieveRelevantNotes(apiKey: string, query: string): Promise<string> {
-  const chunks = await getChunks(apiKey);
-  if (chunks.length === 0 || !embeddings) return '';
+export async function addNote(apiKey: string, userId: string, content: string): Promise<void> {
+  const vector = await getEmbeddings(apiKey).embedQuery(content);
+  db.prepare('INSERT INTO notes (user_id, content, embedding, created_at) VALUES (?, ?, ?, ?)').run(
+    userId,
+    content,
+    JSON.stringify(vector),
+    new Date().toISOString(),
+  );
+}
 
-  const queryEmbedding = await embeddings.embedQuery(query);
+export function listNotes(userId: string): NoteRecord[] {
+  const rows = db
+    .prepare('SELECT id, content, created_at FROM notes WHERE user_id = ? ORDER BY id DESC')
+    .all(userId);
+  return rows.map((row) => ({ id: Number(row.id), content: String(row.content), createdAt: String(row.created_at) }));
+}
+
+export function deleteNote(userId: string, noteId: number): void {
+  db.prepare('DELETE FROM notes WHERE id = ? AND user_id = ?').run(noteId, userId);
+}
+
+export async function retrieveRelevantNotes(apiKey: string, userId: string, query: string): Promise<string> {
+  const rows = db.prepare('SELECT content, embedding FROM notes WHERE user_id = ?').all(userId);
+  if (rows.length === 0 || !query.trim()) return '';
+
+  const chunks = rows.map((row) => ({
+    text: String(row.content),
+    embedding: JSON.parse(String(row.embedding)) as number[],
+  }));
+
+  const queryEmbedding = await getEmbeddings(apiKey).embedQuery(query);
   const scored = chunks
     .map((chunk) => ({ ...chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
     .sort((a, b) => b.score - a.score)
